@@ -1,0 +1,22 @@
+{
+    "Version":"2012-10-17",
+    "Statement":[
+      {
+        "Effect":"Allow",
+        "Action":[
+          "logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"
+        ],
+        "Resource":"arn:aws:logs:*:*:*"
+      },
+      {
+        "Effect":"Allow",
+        "Action":[ "ssm:GetParameter", "ssm:GetParameters" ],
+        "Resource":"arn:aws:ssm:eu-central-1:647800544364:parameter/popow/*"
+      },
+      {
+        "Effect":"Allow",
+        "Action":[ "s3:PutObject", "s3:GetObject" ],
+        "Resource":"arn:aws:s3:::popow-lyrics-<yourname>/*"
+      }
+    ]
+  }
