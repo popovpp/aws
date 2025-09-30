@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Popow Lyrics Scraper Lambda (SAM)
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 120
+    MemorySize: 256
+
+Resources:
+
+  PopowLyricsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: popow-lyrics-storage  # change if this name is taken
+    DeletionPolicy: Retain
+
+  PopowScraperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: popow-scraper
+      CodeUri: src/
+      Handler: lambda_function.lambda_handler
+      Environment:
+        Variables:
+          # These are the SSM parameter names (Lambda will read actual values at runtime)
+          SSM_MONGO_PARAM: "/popow/mongo_uri"
+          SSM_TELEGRAM_PARAM: "/popow/telegram_token"
+          TELEGRAM_CHAT_ID_PARAM: "/popow/telegram_chat_id"
+          S3_BUCKET: !Ref PopowLyricsBucket
+          AUTHOR_PAGE: "http://samlib.ru/editors/p/popow_p_p/"
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+
+      # Minimal inline permissions:
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: "arn:aws:ssm:*:*:parameter/popow/*"
+          Version: "2012-10-17"
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${PopowLyricsBucket}"
+              - !Sub "arn:aws:s3:::${PopowLyricsBucket}/*"
+          Version: "2012-10-17"
+        - Statement:
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "arn:aws:logs:*:*:*"
+          Version: "2012-10-17"
+    Metadata:
+      BuildMethod: python3.11
+      BuildProperties:
+        RequirementsFile: requirements.txt
+Outputs:
+  FunctionName:
+    Description: Name of the lambda function
+    Value: !Ref PopowScraperFunction
+  S3Bucket:
+    Description: Bucket storing .txt files
+    Value: !Ref PopowLyricsBucket

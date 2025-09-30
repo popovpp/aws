@@ -186,4 +186,8 @@ def lambda_handler(event, context):
             time1 = time.perf_counter() - start_time
             print(f"Current timer: {time1:.4f} s")
 
+    message = f"status: done, new: {new_count}"
+    time.sleep(0.2)
+    post_to_telegram(telegram_token, chat_id, message)
+
     return {"status": "done", "new": new_count}

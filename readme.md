@@ -147,26 +147,26 @@ If pymongo or other deps are large, put them into a layer so you only upload fun
 Create python/ directory that contains packages at python/lib/python3.x/site-packages/ when needed for some setups; but a simple python top-level is accepted for Python runtimes:
 
 create a clean folder for layer
-mkdir layer
+`mkdir layer
 pip install -r requirements.txt -t layer/python
 cd layer
 zip -r ../layer.zip .
-cd ..
+cd ..`
 
 2) Publish layer
-aws lambda publish-layer-version \
+`aws lambda publish-layer-version \
   --layer-name popow-deps \
   --zip-file fileb://layer.zip \
   --compatible-runtimes python3.11 \
-  --description "Dependencies for popow-scraper"
+  --description "Dependencies for popow-scraper"`
 
 
-This returns an ARN like arn:aws:lambda:eu-central-1:123456789012:layer:popow-deps:1.
+This returns an ARN like `arn:aws:lambda:eu-central-1:123456789012:layer:popow-deps:1`.
 
 3) Attach layer to function
-aws lambda update-function-configuration \
+`aws lambda update-function-configuration \
   --function-name popow-scraper \
-  --layers arn:aws:lambda:eu-central-1:123456789012:layer:popow-deps:1
+  --layers arn:aws:lambda:eu-central-1:123456789012:layer:popow-deps:1`
 
 
 After that, your function zip only needs to include lambda_function.py (no deps), making updates small and fast.
@@ -206,10 +206,10 @@ Solutions:
 
 Build in an Amazon Linux Docker container:
 
-docker run --rm -v "$PWD":/var/task amazonlinux:2 /bin/bash -c "\
+`docker run --rm -v "$PWD":/var/task amazonlinux:2 /bin/bash -c "\
   yum install -y python3 python3-devel gcc gcc-c++ unzip && \
   python3 -m pip install --upgrade pip && \
-  python3 -m pip install -r requirements.txt -t /var/task/package"
+  python3 -m pip install -r requirements.txt -t /var/task/package"`
 
 
 (there are community images lambci/lambda:build-python3.11 that mimic Lambda build env — they simplify this.)
@@ -232,7 +232,7 @@ If you get AccessDenied, attach appropriate policies to your IAM user or use an 
 
 Create deploy.sh to automate packaging & upload (Linux/macOS):
 
-#!/usr/bin/env bash
+`#!/usr/bin/env bash
 set -e
 
 FUNC_NAME="popow-scraper"
@@ -267,13 +267,13 @@ else
 fi
 
 echo "Published. You can check logs with:"
-echo "aws logs tail /aws/lambda/$FUNC_NAME --follow --region $REGION"
+echo "aws logs tail /aws/lambda/$FUNC_NAME --follow --region $REGION"`
 
 
 Make it executable:
 
-chmod +x deploy.sh
-./deploy.sh
+`chmod +x deploy.sh
+./deploy.sh`
 
 
 This automates the exact steps above.
@@ -282,13 +282,13 @@ This automates the exact steps above.
 
 Invoke function to see immediate output:
 
-aws lambda invoke --function-name popow-scraper --payload '{}' response.json --region eu-central-1
-cat response.json
+`aws lambda invoke --function-name popow-scraper --payload '{}' response.json --region eu-central-1
+cat response.json`
 
 
 Watch logs:
 
-aws logs tail /aws/lambda/popow-scraper --follow --region eu-central-1
+`aws logs tail /aws/lambda/popow-scraper --follow --region eu-central-1`
 
 
 Check errors: Common issues are ModuleNotFoundError (forgot to include dependency), NoSuchBucket (wrong bucket name/region), or permission denied.
@@ -309,11 +309,11 @@ Test locally with the same Python version as Lambda (e.g., 3.11) and consider us
 
 Publish versions + aliases for safe rollouts:
 
-aws lambda publish-version → returns version number (e.g., 2)
+`aws lambda publish-version → returns version number` (e.g., 2)
 
-aws lambda create-alias --function-name popow-scraper --name prod --function-version 2
+`aws lambda create-alias --function-name popow-scraper --name prod --function-version 2`
 
-Update alias to point a new version after testing.
+`Update alias to point a new version after testing`.
 
 ## L. If you run into problems — quick checklist
 
@@ -330,4 +330,306 @@ Does the IAM user running aws lambda update-function-code have lambda:UpdateFunc
 If using S3 upload, is the bucket name correct and in the same region?
 
 Check CloudWatch logs for stack traces.
-s
+
+
+# CHECKING TOOLS
+
+## ✅1. Check that AWS accepted your new code
+
+Run:
+
+`aws lambda get-function --function-name popow-scraper --region eu-central-1`
+
+
+This shows details:
+
+LastModified → should match the time you uploaded.
+
+CodeSize → should reflect your function.zip.
+
+## ✅ 2. Invoke your Lambda manually
+
+This proves it actually runs on AWS infrastructure.
+
+`aws lambda invoke \
+  --function-name popow-scraper \
+  --payload '{}' \
+  response.json \
+  --region eu-central-1`
+
+
+If it runs successfully, response.json will contain your function’s return value.
+
+If it errors, you’ll see an exception, and CloudWatch logs will have details.
+
+Inspect the output:
+
+`cat response.json`
+
+## ✅ 3. Watch logs in CloudWatch
+
+Lambda automatically writes logs. Run:
+
+`aws logs tail /aws/lambda/popow-scraper --follow --region eu-central-1`
+
+
+This streams logs in real time.
+
+If you just invoked manually, you’ll see logs from that execution (print statements, errors, etc.).
+
+## ✅ 4. Check that your EventBridge schedule works
+
+If you already created the EventBridge (cron) rule:
+
+`aws events list-targets-by-rule \
+  --rule popow-schedule \
+  --region eu-central-1`
+
+
+→ Should show your Lambda as a target.
+
+Then wait until the scheduled time (e.g., once per day) and confirm new log entries in CloudWatch.
+
+## ✅ 5. Confirm side effects
+
+Since your Lambda:
+
+Sends messages to Telegram
+
+Saves .txt to S3
+
+Writes to MongoDB
+
+You should also check:
+
+Your Telegram channel → is there a new post?
+
+Your S3 bucket → run
+
+`aws s3 ls s3://popow-lyrics-storage --region eu-central-1`
+
+
+Do you see new .txt files?
+
+Your MongoDB Atlas → open MongoDB Atlas UI → Collections → does lyricsdb have new docs?
+
+👉 With these checks, you can be 100% sure your Lambda is running in AWS and doing its job.
+
+
+# Deploying by SAM
+
+## 1) template.yaml
+`AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Popow Lyrics Scraper Lambda (SAM)
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 120
+    MemorySize: 256
+
+Resources:
+
+  PopowLyricsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: popow-lyrics-storage  # change if this name is taken
+    DeletionPolicy: Retain
+
+  PopowScraperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: popow-scraper
+      CodeUri: src/
+      Handler: lambda_function.lambda_handler
+      Environment:
+        Variables:
+          # These are the SSM parameter names (Lambda will read actual values at runtime)
+          SSM_MONGO_PARAM: "/popow/mongo_uri"
+          SSM_TELEGRAM_PARAM: "/popow/telegram_token"
+          TELEGRAM_CHAT_ID_PARAM: "/popow/telegram_chat_id"
+          S3_BUCKET: !Ref PopowLyricsBucket
+          AUTHOR_PAGE: "http://samlib.ru/editors/p/popow_p_p/"
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+
+      # Minimal inline permissions:
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: "arn:aws:ssm:*:*:parameter/popow/*"
+          Version: "2012-10-17"
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${PopowLyricsBucket}"
+              - !Sub "arn:aws:s3:::${PopowLyricsBucket}/*"
+          Version: "2012-10-17"
+        - Statement:
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "arn:aws:logs:*:*:*"
+          Version: "2012-10-17"
+
+Outputs:
+  FunctionName:
+    Description: Name of the lambda function
+    Value: !Ref PopowScraperFunction
+  S3Bucket:
+    Description: Bucket storing .txt files
+    Value: !Ref PopowLyricsBucket`
+
+
+Notes:
+
+Change BucketName if popow-lyrics-storage is already taken (S3 bucket names are global).
+
+The inline Policies above allow:
+
+read access to SSM parameters under /popow/*
+
+minimal S3 write/read on the specific bucket
+
+CloudWatch logs
+
+DeletionPolicy: Retain keeps S3 bucket if stack is deleted (safe).
+
+## 2) src/lambda_function.py
+
+Save this as src/lambda_function.py.
+
+## 3) requirements.txt
+requests==2.31.0
+beautifulsoup4==4.12.2
+pymongo==4.5.1
+dnspython==2.3.0
+boto3==1.26.0
+
+
+Pin versions for reproducible builds. Adjust versions as you like.
+
+dnspython is often required for mongodb+srv URIs.
+
+## 4) How to prepare secrets in SSM Parameter Store
+
+Create three parameters (use AWS Console or CLI). Example CLI:
+
+`aws ssm put-parameter \
+  --name /popow/mongo_uri \
+  --value "mongodb+srv://lyrics_user:YourPass123@cluster0.xxxxx.mongodb.net/lyricsdb?retryWrites=true&w=majority" \
+  --type "SecureString" --overwrite --region eu-central-1`
+
+`aws ssm put-parameter \
+  --name /popow/telegram_token \
+  --value "123456789:ABCdefGhIj..." \
+  --type "SecureString" --overwrite --region eu-central-1`
+
+`aws ssm put-parameter \
+  --name /popow/telegram_chat_id \
+  --value "-1001234567890" \
+  --type "String" --overwrite --region eu-central-1`
+
+
+Important:
+
+For MongoDB Atlas connection string include the DB name (/lyricsdb) so get_database() works.
+
+For Telegram chat id use numeric ID (channels often start with -100...) or @channelusername for public channels.
+
+## 5) MongoDB Atlas: whitelist & user
+
+In Atlas UI → Network Access → add IP whitelist entry. For Lambda you can:
+
+For development/testing: temporarily 0.0.0.0/0 (open access) — not recommended for production.
+
+For production: use Atlas VPC peering or restrict to NAT/Elastic IPs used by your VPC.
+
+Create a DB user (Database Access → Add New Database User) and use that username/password in the MONGO_URI.
+
+## 6) Build & deploy steps (SAM)
+
+Install SAM CLI (per your OS). Ensure Docker is installed and running (for --use-container).
+
+From repo root:
+
+- build (container ensures compatibility)
+s`am build --use-container`
+
+- first-time deploy guided
+`sam deploy --guided`
+
+
+During guided deploy:
+
+Choose stack name (e.g., popow-scraper-stack)
+
+Confirm region eu-central-1
+
+Accept creation of IAM roles & capabilities (CAPABILITY_IAM) if prompted
+
+Save the configuration for future sam deploy
+
+Subsequent deploy:
+
+`sam deploy`
+
+## 7) Testing & verification
+
+After deploy, check S3 for test or real saved files:
+
+`aws s3 ls s3://popow-lyrics-storage --region eu-central-1`
+
+
+Check Lambda logs:
+
+`aws logs tail /aws/lambda/popow-scraper --follow --region eu-central-1`
+
+
+Check MongoDB Atlas Collections → lyricsdb → works for inserted docs.
+
+Check Telegram channel for posts.
+
+## 8) Notes, caveats & best practices
+
+Build environment — use sam build --use-container so compiled deps (if any) are built for Amazon Linux.
+
+Network access to Atlas — if Lambda is in a VPC with no internet, it cannot reach Atlas unless you configure NAT or VPC peering. Avoid placing Lambda inside VPC unless necessary.
+
+SSM permissions — SAM template above grants ssm:GetParameter for /popow/*. Keep parameter names consistent.
+
+Rate limiting — the code sleeps 2s between publish attempts to avoid Telegram flood limits. Adjust if needed.
+
+Robustness — consider adding retries with exponential backoff for network calls & transient Mongo errors.
+
+Monitoring — add CloudWatch Alarms for Errors / high duration.
+
+Security — rotate MongoDB credentials, and narrow SSM parameter resource ARNs if you harden policies. Use OIDC for CI (GitHub Actions) as we discussed earlier.
+
+Bucket names — must be globally unique. Change popow-lyrics-storage if conflict occurs.
+
+## 9) Quick checklist before first deploy
+
+ Update template.yaml bucket name if needed.
+
+ Populate SSM /popow/mongo_uri, /popow/telegram_token, /popow/telegram_chat_id.
+
+ Ensure MongoDB Atlas user/password in URI and Atlas network whitelist is OK.
+
+ Confirm your Telegram bot is admin of the channel.
+
+ Run sam build --use-container then sam deploy --guided.
+ 
